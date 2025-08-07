@@ -528,8 +528,8 @@
 
         function handleFileUpload(event) {
             const files = event.target.files;
-            for (let file of files) {
-                uploadFile(file);
+            for (let i = 0; i < files.length; i++) {
+                uploadFile(files[i]);
             }
         }
 
@@ -543,8 +543,9 @@
             event.currentTarget.classList.remove('dragover');
             
             const files = event.dataTransfer.files;
-            for (let file of files) {
-                if (file.type.startsWith('image/')) {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (file.type.indexOf('image/') === 0) {
                     uploadFile(file);
                 }
             }
@@ -592,12 +593,11 @@
                 data.images.forEach(image => {
                     const imageItem = document.createElement('div');
                     imageItem.className = 'image-item';
-                    imageItem.innerHTML = `
-                        <div style="font-weight: 600;">${image.filename.split('_').slice(1).join('_')}</div>
-                        <div style="font-size: 12px; color: #718096;">
-                            ${image.image_info.width} × ${image.image_info.height}
-                        </div>
-                    `;
+                    imageItem.innerHTML = 
+                        '<div style="font-weight: 600;">' + image.filename.split('_').slice(1).join('_') + '</div>' +
+                        '<div style="font-size: 12px; color: #718096;">' +
+                            image.image_info.width + ' × ' + image.image_info.height +
+                        '</div>';
                     imageItem.onclick = () => loadImage(image.id);
                     imageList.appendChild(imageItem);
                 });
@@ -613,7 +613,12 @@
             document.querySelectorAll('.image-item').forEach(item => {
                 item.classList.remove('active');
             });
-            event?.target?.closest('.image-item')?.classList.add('active');
+            if (event && event.target) {
+                const imageItem = event.target.closest('.image-item');
+                if (imageItem) {
+                    imageItem.classList.add('active');
+                }
+            }
 
             // 加载图片
             const img = new Image();
@@ -628,7 +633,7 @@
                 document.getElementById('canvasInfo').style.display = 'block';
                 document.getElementById('saveBtn').disabled = false;
             };
-            img.src = `/api/images/${imageId}`;
+            img.src = '/api/images/' + imageId;
         }
 
         function displayImage() {
@@ -654,7 +659,7 @@
         }
 
         function loadAnnotations(imageId) {
-            fetch(`/api/annotations/${imageId}`)
+            fetch('/api/annotations/' + imageId)
             .then(response => response.json())
             .then(data => {
                 annotations = data.annotations || [];
@@ -686,7 +691,13 @@
             }
 
             // 检查是否已存在分类标注
-            const existingClassification = annotations.find(ann => ann.type === 'classification');
+            let existingClassification = null;
+            for (let i = 0; i < annotations.length; i++) {
+                if (annotations[i].type === 'classification') {
+                    existingClassification = annotations[i];
+                    break;
+                }
+            }
             if (existingClassification) {
                 existingClassification.label = label;
                 existingClassification.timestamp = new Date().toISOString();
@@ -860,13 +871,12 @@
             annotations.forEach((ann, index) => {
                 const item = document.createElement('div');
                 item.className = 'annotation-item';
-                item.innerHTML = `
-                    <div class="annotation-info">
-                        <div class="annotation-type">${ann.type === 'classification' ? '分类' : '检测'}</div>
-                        <div class="annotation-label">${ann.label}</div>
-                    </div>
-                    <button class="delete-btn" onclick="deleteAnnotation(${index})">删除</button>
-                `;
+                item.innerHTML = 
+                    '<div class="annotation-info">' +
+                        '<div class="annotation-type">' + (ann.type === 'classification' ? '分类' : '检测') + '</div>' +
+                        '<div class="annotation-label">' + ann.label + '</div>' +
+                    '</div>' +
+                    '<button class="delete-btn" onclick="deleteAnnotation(' + index + ')">删除</button>';
                 listElement.appendChild(item);
             });
         }
@@ -892,7 +902,7 @@
                 }
             };
 
-            fetch(`/api/annotations/${currentImageId}`, {
+            fetch('/api/annotations/' + currentImageId, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -914,9 +924,9 @@
         }
 
         function exportData(format) {
-            showProgress('导出中...', `正在导出${format.toUpperCase()}格式数据...`);
+            showProgress('导出中...', '正在导出' + format.toUpperCase() + '格式数据...');
             
-            fetch(`/api/export/${format}`)
+            fetch('/api/export/' + format)
             .then(response => response.json())
             .then(data => {
                 hideProgress();
@@ -928,13 +938,13 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `annotations_${format}_${new Date().toISOString().split('T')[0]}.json`;
+                a.download = 'annotations_' + format + '_' + new Date().toISOString().split('T')[0] + '.json';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
                 
-                showNotification(`${format.toUpperCase()}格式数据导出成功！`, 'success');
+                showNotification(format.toUpperCase() + '格式数据导出成功！', 'success');
             })
             .catch(error => {
                 hideProgress();
@@ -955,7 +965,7 @@
         function showNotification(message, type) {
             const notification = document.getElementById('notification');
             notification.textContent = message;
-            notification.className = `notification ${type} show`;
+            notification.className = 'notification ' + type + ' show';
             
             setTimeout(() => {
                 notification.classList.remove('show');
