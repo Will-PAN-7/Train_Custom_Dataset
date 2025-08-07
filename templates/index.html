@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据集标注工具 - 同济子豪兄</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .card-hover {
+            transition: transform 0.2s;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+        }
+        .task-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        .project-card {
+            border-left: 4px solid #667eea;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark gradient-bg">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-image"></i> 数据集标注工具
+            </a>
+            <span class="navbar-text">
+                作者：同济子豪兄
+            </span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- 欢迎区域 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card gradient-bg text-white">
+                    <div class="card-body text-center py-5">
+                        <h1 class="display-4 mb-3">
+                            <i class="bi bi-brush"></i> 数据集标注工具
+                        </h1>
+                        <p class="lead">支持图像分类、目标检测、语义分割等多种标注任务</p>
+                        <button class="btn btn-light btn-lg" data-bs-toggle="modal" data-bs-target="#createProjectModal">
+                            <i class="bi bi-plus-circle"></i> 创建新项目
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 功能介绍 -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card card-hover h-100 text-center">
+                    <div class="card-body">
+                        <i class="bi bi-grid-3x3-gap task-icon text-primary"></i>
+                        <h5>图像分类</h5>
+                        <p class="text-muted">为图像标注类别标签，支持多类别分类任务</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-hover h-100 text-center">
+                    <div class="card-body">
+                        <i class="bi bi-bounding-box task-icon text-success"></i>
+                        <h5>目标检测</h5>
+                        <p class="text-muted">绘制边界框标注目标位置，支持COCO、YOLO格式导出</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-hover h-100 text-center">
+                    <div class="card-body">
+                        <i class="bi bi-palette task-icon text-warning"></i>
+                        <h5>语义分割</h5>
+                        <p class="text-muted">像素级标注，支持多边形和画笔工具</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 现有项目 -->
+        <div class="row">
+            <div class="col-12">
+                <h3 class="mb-3">
+                    <i class="bi bi-folder"></i> 现有项目
+                    <span class="badge bg-secondary">{{ projects|length }}</span>
+                </h3>
+                
+                {% if projects %}
+                <div class="row">
+                    {% for project_id, project in projects.items() %}
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card project-card">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <h5 class="card-title">{{ project.name }}</h5>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown">
+                                            <i class="bi bi-three-dots-vertical"></i>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" href="/project/{{ project_id }}">
+                                                <i class="bi bi-eye"></i> 查看项目
+                                            </a></li>
+                                            <li><a class="dropdown-item" href="/export/{{ project_id }}/coco">
+                                                <i class="bi bi-download"></i> 导出COCO
+                                            </a></li>
+                                            <li><a class="dropdown-item" href="/export/{{ project_id }}/yolo">
+                                                <i class="bi bi-download"></i> 导出YOLO
+                                            </a></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><a class="dropdown-item text-danger" href="#" onclick="deleteProject('{{ project_id }}')">
+                                                <i class="bi bi-trash"></i> 删除项目
+                                            </a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    {% if project.task_type == 'classification' %}
+                                        <span class="badge bg-primary">图像分类</span>
+                                    {% elif project.task_type == 'detection' %}
+                                        <span class="badge bg-success">目标检测</span>
+                                    {% elif project.task_type == 'segmentation' %}
+                                        <span class="badge bg-warning">语义分割</span>
+                                    {% endif %}
+                                </div>
+                                
+                                <p class="card-text">
+                                    <small class="text-muted">
+                                        <i class="bi bi-images"></i> {{ project.images|length }} 张图像<br>
+                                        <i class="bi bi-tags"></i> {{ project.classes|length }} 个类别<br>
+                                        <i class="bi bi-calendar"></i> {{ project.created_at[:10] }}
+                                    </small>
+                                </p>
+                                
+                                <div class="d-grid">
+                                    <a href="/project/{{ project_id }}" class="btn btn-primary">
+                                        <i class="bi bi-arrow-right"></i> 进入项目
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-folder-x display-1 text-muted"></i>
+                    <h4 class="mt-3 text-muted">还没有项目</h4>
+                    <p class="text-muted">点击上方按钮创建您的第一个标注项目</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建项目模态框 -->
+    <div class="modal fade" id="createProjectModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">创建新项目</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="createProjectForm">
+                        <div class="mb-3">
+                            <label class="form-label">项目名称</label>
+                            <input type="text" class="form-control" id="projectName" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">标注任务类型</label>
+                            <select class="form-select" id="taskType" required>
+                                <option value="">请选择任务类型</option>
+                                <option value="classification">图像分类</option>
+                                <option value="detection">目标检测</option>
+                                <option value="segmentation">语义分割</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">类别列表</label>
+                            <textarea class="form-control" id="classList" rows="4" 
+                                      placeholder="每行一个类别名称，例如：&#10;猫&#10;狗&#10;鸟"></textarea>
+                            <div class="form-text">每行输入一个类别名称</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="createProject()">创建项目</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function createProject() {
+            const projectName = document.getElementById('projectName').value.trim();
+            const taskType = document.getElementById('taskType').value;
+            const classList = document.getElementById('classList').value.trim();
+            
+            if (!projectName || !taskType) {
+                alert('请填写项目名称和选择任务类型');
+                return;
+            }
+            
+            const classes = classList ? classList.split('\n').map(c => c.trim()).filter(c => c) : [];
+            
+            fetch('/create_project', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    project_name: projectName,
+                    task_type: taskType,
+                    classes: classes
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('项目创建成功！');
+                    location.reload();
+                } else {
+                    alert('创建失败：' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('创建失败');
+            });
+        }
+        
+        function deleteProject(projectId) {
+            if (confirm('确定要删除这个项目吗？此操作不可恢复！')) {
+                fetch(`/delete_project/${projectId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('项目删除成功！');
+                        location.reload();
+                    } else {
+                        alert('删除失败：' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('删除失败');
+                });
+            }
+        }
+    </script>
+</body>
+</html>
