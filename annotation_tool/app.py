@@ -20,14 +20,75 @@ CORS(app)
 # 配置
 UPLOAD_FOLDER = 'uploads'
 ANNOTATIONS_FOLDER = 'annotations'
+IMU_FOLDER = 'imu_data'  # 新增IMU数据文件夹
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp'}
+ALLOWED_IMU_EXTENSIONS = {'csv', 'txt', 'json'}  # 新增IMU文件格式支持
 
 # 创建必要的文件夹
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(ANNOTATIONS_FOLDER, exist_ok=True)
+os.makedirs(IMU_FOLDER, exist_ok=True)  # 创建IMU数据文件夹
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def allowed_imu_file(filename):
+    """检查是否为允许的IMU文件格式"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMU_EXTENSIONS
+
+def parse_imu_data(filepath):
+    """解析IMU数据文件"""
+    try:
+        file_ext = filepath.rsplit('.', 1)[1].lower()
+        
+        if file_ext == 'csv':
+            import pandas as pd
+            df = pd.read_csv(filepath)
+            # 假设CSV格式包含timestamp, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
+            return {
+                'format': 'csv',
+                'columns': list(df.columns),
+                'length': len(df),
+                'sample_data': df.head(5).to_dict('records'),
+                'data': df.to_dict('records')
+            }
+        
+        elif file_ext == 'json':
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return {
+                    'format': 'json',
+                    'length': len(data) if isinstance(data, list) else 1,
+                    'sample_data': data[:5] if isinstance(data, list) else data,
+                    'data': data
+                }
+        
+        elif file_ext == 'txt':
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                # 简单的文本解析，假设每行是以空格或逗号分隔的数值
+                data = []
+                for line in lines[:100]:  # 只处理前100行作为示例
+                    line = line.strip()
+                    if line:
+                        values = line.replace(',', ' ').split()
+                        try:
+                            numeric_values = [float(v) for v in values]
+                            data.append(numeric_values)
+                        except ValueError:
+                            continue
+                
+                return {
+                    'format': 'txt',
+                    'length': len(lines),
+                    'sample_data': data[:5],
+                    'data': data
+                }
+        
+        return None
+    except Exception as e:
+        print(f"解析IMU数据时出错: {e}")
+        return None
 
 def get_image_info(filepath):
     """获取图像基本信息"""
@@ -293,6 +354,165 @@ def convert_to_yolo_format(annotations):
         yolo_data['annotations'][image_id] = image_annotations
     
     return yolo_data
+
+# IMU数据相关API
+@app.route('/api/imu/upload', methods=['POST'])
+def upload_imu():
+    """上传IMU数据文件"""
+    if 'file' not in request.files:
+        return jsonify({'error': '没有文件'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '没有选择文件'}), 400
+    
+    if file and allowed_imu_file(file.filename):
+        # 生成唯一的文件ID
+        file_id = str(uuid.uuid4())
+        filename = f"{file_id}_{file.filename}"
+        filepath = os.path.join(IMU_FOLDER, filename)
+        
+        file.save(filepath)
+        
+        # 解析IMU数据
+        imu_info = parse_imu_data(filepath)
+        if not imu_info:
+            return jsonify({'error': '无法解析IMU数据文件'}), 400
+        
+        # 保存文件信息
+        file_info = {
+            'id': file_id,
+            'filename': file.filename,
+            'filepath': filepath,
+            'upload_time': datetime.now().isoformat(),
+            'imu_info': imu_info
+        }
+        
+        return jsonify({
+            'success': True,
+            'file_info': file_info
+        })
+    
+    return jsonify({'error': '不支持的文件格式'}), 400
+
+@app.route('/api/imu/list', methods=['GET'])
+def list_imu_files():
+    """获取IMU文件列表"""
+    files = []
+    
+    for filename in os.listdir(IMU_FOLDER):
+        if allowed_imu_file(filename):
+            filepath = os.path.join(IMU_FOLDER, filename)
+            file_id = filename.split('_')[0]
+            original_name = '_'.join(filename.split('_')[1:])
+            
+            # 获取文件基本信息
+            stat = os.stat(filepath)
+            
+            files.append({
+                'id': file_id,
+                'filename': original_name,
+                'size': stat.st_size,
+                'upload_time': datetime.fromtimestamp(stat.st_mtime).isoformat()
+            })
+    
+    return jsonify({'files': files})
+
+@app.route('/api/imu/<file_id>', methods=['GET'])
+def get_imu_data(file_id):
+    """获取特定IMU文件的数据"""
+    # 查找文件
+    target_file = None
+    for filename in os.listdir(IMU_FOLDER):
+        if filename.startswith(file_id + '_'):
+            target_file = os.path.join(IMU_FOLDER, filename)
+            break
+    
+    if not target_file or not os.path.exists(target_file):
+        return jsonify({'error': '文件不存在'}), 404
+    
+    # 解析数据
+    imu_data = parse_imu_data(target_file)
+    if not imu_data:
+        return jsonify({'error': '无法解析文件'}), 500
+    
+    return jsonify(imu_data)
+
+@app.route('/api/imu/annotations/<file_id>', methods=['GET', 'POST'])
+def imu_annotations(file_id):
+    """获取或保存IMU数据标注"""
+    annotation_file = os.path.join(ANNOTATIONS_FOLDER, f'imu_{file_id}.json')
+    
+    if request.method == 'GET':
+        # 获取标注数据
+        if os.path.exists(annotation_file):
+            with open(annotation_file, 'r', encoding='utf-8') as f:
+                return jsonify(json.load(f))
+        else:
+            return jsonify({'annotations': []})
+    
+    elif request.method == 'POST':
+        # 保存标注数据
+        data = request.get_json()
+        
+        annotation_data = {
+            'file_id': file_id,
+            'annotations': data.get('annotations', []),
+            'last_updated': datetime.now().isoformat()
+        }
+        
+        with open(annotation_file, 'w', encoding='utf-8') as f:
+            json.dump(annotation_data, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'message': '标注已保存'})
+
+@app.route('/api/imu/export/<format_type>', methods=['GET'])
+def export_imu_annotations(format_type):
+    """导出IMU标注数据"""
+    # 获取所有IMU标注文件
+    annotations = []
+    
+    for filename in os.listdir(ANNOTATIONS_FOLDER):
+        if filename.startswith('imu_') and filename.endswith('.json'):
+            filepath = os.path.join(ANNOTATIONS_FOLDER, filename)
+            with open(filepath, 'r', encoding='utf-8') as f:
+                annotations.append(json.load(f))
+    
+    if format_type == 'json':
+        return jsonify({
+            'export_time': datetime.now().isoformat(),
+            'total_files': len(annotations),
+            'annotations': annotations
+        })
+    
+    elif format_type == 'csv':
+        # 将标注数据转换为CSV格式
+        import pandas as pd
+        
+        rows = []
+        for ann_file in annotations:
+            file_id = ann_file.get('file_id', '')
+            for annotation in ann_file.get('annotations', []):
+                row = {
+                    'file_id': file_id,
+                    'start_time': annotation.get('start_time', ''),
+                    'end_time': annotation.get('end_time', ''),
+                    'label': annotation.get('label', ''),
+                    'description': annotation.get('description', ''),
+                    'timestamp': annotation.get('timestamp', '')
+                }
+                rows.append(row)
+        
+        df = pd.DataFrame(rows)
+        csv_content = df.to_csv(index=False)
+        
+        return jsonify({
+            'format': 'csv',
+            'content': csv_content,
+            'filename': f'imu_annotations_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        })
+    
+    return jsonify({'error': '不支持的导出格式'}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
