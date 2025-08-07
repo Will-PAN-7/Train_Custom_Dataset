@@ -44,7 +44,13 @@ def parse_imu_data(filepath):
         if file_ext == 'csv':
             import pandas as pd
             df = pd.read_csv(filepath)
-            # 假设CSV格式包含timestamp, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
+            # 假设CSV格式包含如下字段：
+            # timestamp: 消息发送的时间戳，单位为秒（s），用于标识每一帧IMU数据的采集时刻
+            # acc_x, acc_y, acc_z: 三轴线性加速度，单位为米每二次方秒（m/s^2），分别对应X、Y、Z轴
+            # gyro_x, gyro_y, gyro_z: 三轴角速度，单位为弧度每秒（rad/s），分别对应X、Y、Z轴
+            #
+            # 说明：如需扩展IMU消息头部（如frame_id坐标系ID）、空间姿态（orientation四元数）、协方差矩阵（covariance）等字段，可参考ROS标准IMU消息格式sensor_msgs/Imu。
+            # 当前实现仅支持常见的加速度计和陀螺仪数据。
             return {
                 'format': 'csv',
                 'columns': list(df.columns),
