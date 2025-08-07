@@ -1,23 +1,27 @@
 # 🏷️ 数据集标注工具
 
-一个基于Web的现代化数据集标注工具，支持图像分类、目标检测等多种标注任务，具有直观的用户界面和强大的数据导出功能。
+一个基于Web的现代化数据集标注工具，支持图像分类、目标检测、**IMU数据标注**等多种标注任务，具有直观的用户界面和强大的数据导出功能。
 
 ## ✨ 功能特色
 
 ### 🎯 多种标注模式
 - **图像分类**: 为整张图像添加类别标签
 - **目标检测**: 通过拖拽绘制边界框进行目标标注
+- **📊 IMU数据标注**: 时序传感器数据的动作分类和时间段标记（**新增功能**）
 - **实时预览**: 标注结果实时显示在图像上
 
 ### 📁 文件管理
 - **拖拽上传**: 支持拖拽多个图像文件上传
-- **格式支持**: JPG、PNG、GIF、BMP等常见图像格式
+- **格式支持**: 
+  - 图像：JPG、PNG、GIF、BMP等常见图像格式
+  - **IMU数据：CSV、JSON、TXT格式的传感器数据**
 - **批量处理**: 一次上传多个文件，快速切换标注
 
 ### 💾 数据导出
 - **JSON格式**: 原始标注数据导出
 - **COCO格式**: 兼容COCO数据集格式
 - **YOLO格式**: 支持YOLO训练格式导出
+- **📊 IMU格式**: 支持IMU标注数据的JSON和CSV导出
 
 ### 🎨 用户体验
 - **现代化UI**: 渐变背景、圆角设计、流畅动画
@@ -90,6 +94,30 @@ docker run -p 5000:5000 -v $(pwd)/uploads:/app/uploads -v $(pwd)/annotations:/ap
 ### 5. 快捷键操作
 - `Delete` 或 `Backspace`: 删除最后一个标注
 - `右键`: 删除点击位置的检测框
+
+### 6. IMU数据标注（新增功能）
+1. 点击"📊 IMU数据标注"切换到IMU模式
+2. 上传IMU数据文件（支持CSV、JSON、TXT格式）
+3. 系统自动生成时序图表，显示传感器数据
+4. 在右侧面板输入动作标签和时间范围
+5. 点击"添加时间段标注"进行标注
+6. 使用"导出IMU JSON"或"导出IMU CSV"导出标注结果
+
+#### IMU数据格式示例
+**CSV格式：**
+```csv
+timestamp,acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z
+0.00,0.12,-0.34,9.78,0.01,-0.02,0.03
+0.01,0.15,-0.31,9.81,0.02,-0.01,0.02
+```
+
+**JSON格式：**
+```json
+[
+  {"timestamp": 0.00, "acc_x": 0.12, "acc_y": -0.34, "acc_z": 9.78},
+  {"timestamp": 0.01, "acc_x": 0.15, "acc_y": -0.31, "acc_z": 9.81}
+]
+```
 
 ## 🔧 API 文档
 
@@ -194,6 +222,83 @@ GET /api/export/<format>
 format: json|coco|yolo
 
 返回: 对应格式的标注数据
+```
+
+### IMU数据管理（新增）
+
+#### 上传IMU数据
+```http
+POST /api/imu/upload
+Content-Type: multipart/form-data
+
+参数:
+- file: IMU数据文件 (CSV/JSON/TXT)
+
+返回:
+{
+  "success": true,
+  "file_info": {
+    "id": "文件ID",
+    "filename": "原始文件名",
+    "imu_info": {
+      "format": "csv|json|txt",
+      "length": 数据长度,
+      "columns": ["列名列表"]
+    }
+  }
+}
+```
+
+#### 获取IMU文件列表
+```http
+GET /api/imu/list
+
+返回:
+{
+  "files": [
+    {
+      "id": "文件ID",
+      "filename": "文件名",
+      "size": 文件大小,
+      "upload_time": "上传时间"
+    }
+  ]
+}
+```
+
+#### 获取IMU数据
+```http
+GET /api/imu/<file_id>
+
+返回: IMU数据详情和内容
+```
+
+#### 保存/获取IMU标注
+```http
+GET /api/imu/annotations/<file_id>
+POST /api/imu/annotations/<file_id>
+
+POST参数:
+{
+  "annotations": [
+    {
+      "id": "标注ID",
+      "label": "动作标签",
+      "start_time": 开始时间,
+      "end_time": 结束时间,
+      "timestamp": "创建时间"
+    }
+  ]
+}
+```
+
+#### 导出IMU标注数据
+```http
+GET /api/imu/export/<format>
+
+format: json|csv
+
+返回: 对应格式的IMU标注数据
 ```
 
 ## 📁 项目结构

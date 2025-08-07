@@ -404,6 +404,13 @@
                     <div class="upload-hint">或从左侧图片列表选择</div>
                 </div>
                 <canvas id="imageCanvas"></canvas>
+                <div id="imuVisualization" style="display: none; width: 100%; height: 400px;">
+                    <h3 style="text-align: center; margin-bottom: 20px;">📊 IMU数据时序图</h3>
+                    <canvas id="imuCanvas" width="800" height="350" style="border: 1px solid #ddd; border-radius: 5px;"></canvas>
+                    <div id="imuInfo" style="margin-top: 10px; color: #718096; text-align: center;">
+                        <span>🖱️ 拖拽选择时间段进行标注</span>
+                    </div>
+                </div>
                 <div id="canvasInfo" style="margin-top: 10px; color: #718096; display: none;">
                     <span>🖱️ 左键拖拽绘制边界框 | 右键删除标注</span>
                 </div>
@@ -414,10 +421,13 @@
                 <div class="tool-section">
                     <h3>🏷️ 标注模式</h3>
                     <button class="btn active" id="classificationBtn" onclick="setAnnotationMode('classification')">
-                        图像分类
+                        📷 图像分类
                     </button>
                     <button class="btn" id="detectionBtn" onclick="setAnnotationMode('detection')">
-                        目标检测
+                        🎯 目标检测
+                    </button>
+                    <button class="btn" id="imuBtn" onclick="setAnnotationMode('imu')">
+                        📊 IMU数据标注
                     </button>
                 </div>
 
@@ -440,6 +450,31 @@
                     </div>
                     <div style="color: #718096; font-size: 12px; margin-bottom: 10px;">
                         在图像上拖拽绘制边界框
+                    </div>
+                </div>
+
+                <div class="tool-section" id="imuPanel" style="display: none;">
+                    <h3>📊 IMU数据标注</h3>
+                    <div class="form-group">
+                        <label for="imuFileUpload">上传IMU文件:</label>
+                        <input type="file" id="imuFileUpload" accept=".csv,.txt,.json" style="margin-bottom: 10px;">
+                        <button class="btn btn-small" onclick="uploadIMUFile()">上传</button>
+                    </div>
+                    <div class="form-group">
+                        <label for="actionLabel">动作标签:</label>
+                        <input type="text" id="actionLabel" placeholder="输入动作名称">
+                    </div>
+                    <div class="form-group">
+                        <label for="startTime">开始时间:</label>
+                        <input type="number" id="startTime" placeholder="开始时间(秒)" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="endTime">结束时间:</label>
+                        <input type="number" id="endTime" placeholder="结束时间(秒)" step="0.1">
+                    </div>
+                    <button class="btn" onclick="addIMUAnnotation()">添加时间段标注</button>
+                    <div style="color: #718096; font-size: 12px; margin-top: 10px;">
+                        在时序图表上选择时间段进行标注
                     </div>
                 </div>
 
@@ -466,6 +501,15 @@
                     <button class="btn" onclick="exportData('yolo')">
                         导出 YOLO
                     </button>
+                    <div id="imuExportButtons" style="display: none; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+                        <h4 style="margin-bottom: 10px;">IMU数据导出</h4>
+                        <button class="btn" onclick="exportIMUData('json')">
+                            导出 IMU JSON
+                        </button>
+                        <button class="btn" onclick="exportIMUData('csv')">
+                            导出 IMU CSV
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -496,11 +540,23 @@
         let canvas, ctx;
         let imageScale = 1;
         let imageOffsetX = 0, imageOffsetY = 0;
+        
+        // IMU相关变量
+        let currentIMUData = null;
+        let currentIMUFileId = null;
+        let imuCanvas, imuCtx;
+        let imuAnnotations = [];
+        let isSelectingTimeRange = false;
+        let timeRangeStart = 0, timeRangeEnd = 0;
 
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             canvas = document.getElementById('imageCanvas');
             ctx = canvas.getContext('2d');
+            
+            // 初始化IMU canvas
+            imuCanvas = document.getElementById('imuCanvas');
+            imuCtx = imuCanvas.getContext('2d');
             
             setupEventListeners();
             loadImageList();
@@ -678,9 +734,22 @@
             // 显示/隐藏面板
             document.getElementById('classificationPanel').style.display = mode === 'classification' ? 'block' : 'none';
             document.getElementById('detectionPanel').style.display = mode === 'detection' ? 'block' : 'none';
+            document.getElementById('imuPanel').style.display = mode === 'imu' ? 'block' : 'none';
+            
+            // 显示/隐藏对应的可视化区域
+            document.getElementById('mainUploadArea').style.display = mode === 'imu' ? 'none' : (currentImage ? 'none' : 'block');
+            document.getElementById('imageCanvas').style.display = mode === 'imu' ? 'none' : 'block';
+            document.getElementById('imuVisualization').style.display = mode === 'imu' ? 'block' : 'none';
+            document.getElementById('canvasInfo').style.display = mode === 'detection' && currentImage ? 'block' : 'none';
+            document.getElementById('imuExportButtons').style.display = mode === 'imu' ? 'block' : 'none';
             
             // 更新画布光标
             canvas.style.cursor = mode === 'detection' ? 'crosshair' : 'default';
+            
+            // 如果切换到IMU模式，加载IMU文件列表
+            if (mode === 'imu') {
+                loadIMUFileList();
+            }
         }
 
         function addClassificationAnnotation() {
@@ -980,6 +1049,268 @@
 
         function hideProgress() {
             document.getElementById('progressModal').style.display = 'none';
+        }
+        
+        // IMU数据处理函数
+        function uploadIMUFile() {
+            const fileInput = document.getElementById('imuFileUpload');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showNotification('请选择IMU文件', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            showProgress('上传IMU文件', '正在上传和解析IMU数据...');
+            
+            fetch('/api/imu/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideProgress();
+                if (data.success) {
+                    showNotification('IMU文件上传成功', 'success');
+                    currentIMUFileId = data.file_info.id;
+                    currentIMUData = data.file_info.imu_info;
+                    loadIMUFileList();
+                    visualizeIMUData();
+                } else {
+                    showNotification('上传失败: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                hideProgress();
+                showNotification('上传失败: ' + error.message, 'error');
+            });
+        }
+        
+        function loadIMUFileList() {
+            fetch('/api/imu/list')
+            .then(response => response.json())
+            .then(data => {
+                updateIMUFileList(data.files);
+            })
+            .catch(error => {
+                console.error('加载IMU文件列表失败:', error);
+            });
+        }
+        
+        function updateIMUFileList(files) {
+            // 这里可以更新左侧面板的文件列表显示IMU文件
+            // 暂时在控制台输出，后续可以扩展UI
+            console.log('IMU文件列表:', files);
+        }
+        
+        function visualizeIMUData() {
+            if (!currentIMUData || !currentIMUData.data) {
+                return;
+            }
+            
+            const data = currentIMUData.data;
+            const canvasWidth = imuCanvas.width;
+            const canvasHeight = imuCanvas.height;
+            
+            // 清空画布
+            imuCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+            
+            // 绘制坐标轴
+            imuCtx.strokeStyle = '#333';
+            imuCtx.lineWidth = 1;
+            
+            // X轴
+            imuCtx.beginPath();
+            imuCtx.moveTo(50, canvasHeight - 50);
+            imuCtx.lineTo(canvasWidth - 50, canvasHeight - 50);
+            imuCtx.stroke();
+            
+            // Y轴
+            imuCtx.beginPath();
+            imuCtx.moveTo(50, 50);
+            imuCtx.lineTo(50, canvasHeight - 50);
+            imuCtx.stroke();
+            
+            // 绘制数据
+            if (data.length > 0) {
+                const plotWidth = canvasWidth - 100;
+                const plotHeight = canvasHeight - 100;
+                
+                // 假设数据格式包含时间戳和传感器数值
+                // 这里简化处理，根据实际数据格式调整
+                const xStep = plotWidth / data.length;
+                
+                // 绘制加速度计数据（假设前3列是acc_x, acc_y, acc_z）
+                const colors = ['#ff4757', '#2ed573', '#3742fa'];
+                const labels = ['Acc X', 'Acc Y', 'Acc Z'];
+                
+                for (let channel = 0; channel < Math.min(3, Object.keys(data[0]).length - 1); channel++) {
+                    imuCtx.strokeStyle = colors[channel];
+                    imuCtx.lineWidth = 2;
+                    imuCtx.beginPath();
+                    
+                    for (let i = 0; i < data.length; i++) {
+                        const values = Object.values(data[i]);
+                        if (values.length > channel + 1) {
+                            const x = 50 + i * xStep;
+                            const y = canvasHeight - 50 - (values[channel + 1] || 0) * 10; // 简单缩放
+                            
+                            if (i === 0) {
+                                imuCtx.moveTo(x, y);
+                            } else {
+                                imuCtx.lineTo(x, y);
+                            }
+                        }
+                    }
+                    imuCtx.stroke();
+                    
+                    // 绘制图例
+                    imuCtx.fillStyle = colors[channel];
+                    imuCtx.fillRect(canvasWidth - 150, 20 + channel * 25, 20, 15);
+                    imuCtx.fillStyle = '#333';
+                    imuCtx.font = '12px Arial';
+                    imuCtx.fillText(labels[channel], canvasWidth - 125, 32 + channel * 25);
+                }
+            }
+            
+            // 绘制标注的时间段
+            drawIMUAnnotations();
+        }
+        
+        function drawIMUAnnotations() {
+            if (!imuAnnotations || imuAnnotations.length === 0) {
+                return;
+            }
+            
+            const canvasWidth = imuCanvas.width;
+            const canvasHeight = imuCanvas.height;
+            const plotWidth = canvasWidth - 100;
+            
+            imuAnnotations.forEach((annotation, index) => {
+                const startX = 50 + (annotation.start_time || 0) * plotWidth / 100; // 简化时间映射
+                const endX = 50 + (annotation.end_time || 0) * plotWidth / 100;
+                
+                // 绘制标注区域
+                imuCtx.fillStyle = 'rgba(255, 193, 7, 0.3)';
+                imuCtx.fillRect(startX, 50, endX - startX, canvasHeight - 100);
+                
+                // 绘制标注标签
+                imuCtx.fillStyle = '#333';
+                imuCtx.font = '12px Arial';
+                imuCtx.fillText(annotation.label || '', startX + 5, 70);
+            });
+        }
+        
+        function addIMUAnnotation() {
+            const label = document.getElementById('actionLabel').value.trim();
+            const startTime = parseFloat(document.getElementById('startTime').value);
+            const endTime = parseFloat(document.getElementById('endTime').value);
+            
+            if (!label) {
+                showNotification('请输入动作标签', 'error');
+                return;
+            }
+            
+            if (isNaN(startTime) || isNaN(endTime) || startTime >= endTime) {
+                showNotification('请输入有效的时间范围', 'error');
+                return;
+            }
+            
+            const annotation = {
+                id: 'imu_' + Date.now(),
+                label: label,
+                start_time: startTime,
+                end_time: endTime,
+                timestamp: new Date().toISOString()
+            };
+            
+            imuAnnotations.push(annotation);
+            
+            // 保存标注
+            saveIMUAnnotations();
+            
+            // 清空输入框
+            document.getElementById('actionLabel').value = '';
+            document.getElementById('startTime').value = '';
+            document.getElementById('endTime').value = '';
+            
+            // 重绘可视化
+            visualizeIMUData();
+            
+            showNotification('IMU标注已添加', 'success');
+        }
+        
+        function saveIMUAnnotations() {
+            if (!currentIMUFileId) {
+                showNotification('没有选择IMU文件', 'error');
+                return;
+            }
+            
+            const data = {
+                annotations: imuAnnotations
+            };
+            
+            fetch('/api/imu/annotations/' + currentIMUFileId, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('IMU标注已保存', 'success');
+                } else {
+                    showNotification('保存失败', 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('保存失败: ' + error.message, 'error');
+            });
+        }
+
+        function exportIMUData(format) {
+            showProgress('导出IMU数据', '正在生成导出文件...');
+            
+            fetch('/api/imu/export/' + format)
+            .then(response => response.json())
+            .then(data => {
+                hideProgress();
+                if (data.error) {
+                    showNotification('导出失败: ' + data.error, 'error');
+                    return;
+                }
+                
+                if (format === 'csv') {
+                    // 下载CSV文件
+                    const blob = new Blob([data.content], { type: 'text/csv' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = data.filename || 'imu_annotations.csv';
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    showNotification('IMU CSV导出成功', 'success');
+                } else {
+                    // 下载JSON文件
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'imu_annotations.json';
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    showNotification('IMU JSON导出成功', 'success');
+                }
+            })
+            .catch(error => {
+                hideProgress();
+                showNotification('导出失败: ' + error.message, 'error');
+            });
         }
 
         // 窗口大小改变时重新调整画布
