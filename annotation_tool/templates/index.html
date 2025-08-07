@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据集标注工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 300px 1fr 300px;
+            gap: 20px;
+            height: calc(100vh - 200px);
+        }
+
+        .sidebar {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow-y: auto;
+        }
+
+        .canvas-container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .upload-area:hover {
+            background-color: #f8f9ff;
+            border-color: #5a67d8;
+        }
+
+        .upload-area.dragover {
+            background-color: #e6fffa;
+            border-color: #38b2ac;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            font-size: 18px;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            font-size: 14px;
+            color: #718096;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        #imageCanvas {
+            max-width: 100%;
+            max-height: 80vh;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            cursor: crosshair;
+            display: none;
+        }
+
+        .tool-section {
+            margin-bottom: 25px;
+        }
+
+        .tool-section h3 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 18px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 5px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn.active {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        }
+
+        .btn:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .annotation-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .annotation-item {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .annotation-item:hover {
+            background: #edf2f7;
+        }
+
+        .annotation-info {
+            flex: 1;
+        }
+
+        .annotation-type {
+            font-size: 12px;
+            color: #718096;
+            text-transform: uppercase;
+        }
+
+        .annotation-label {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .delete-btn {
+            background: #e53e3e;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .delete-btn:hover {
+            background: #c53030;
+        }
+
+        .stats {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stats h4 {
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .image-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .image-item {
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .image-item:hover {
+            background: #f7fafc;
+            border-color: #667eea;
+        }
+
+        .image-item.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 400px;
+            text-align: center;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #e2e8f0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            z-index: 1001;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background: #48bb78;
+        }
+
+        .notification.error {
+            background: #e53e3e;
+        }
+
+        @media (max-width: 1200px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            
+            .sidebar {
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏷️ 数据集标注工具</h1>
+            <p>支持图像分类、目标检测等多种标注任务</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 左侧工具栏 -->
+            <div class="sidebar">
+                <div class="tool-section">
+                    <h3>📁 文件管理</h3>
+                    <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                        <div class="upload-icon">📷</div>
+                        <div class="upload-text">点击或拖拽上传图片</div>
+                        <div class="upload-hint">支持 JPG, PNG, GIF 格式</div>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*" multiple>
+                </div>
+
+                <div class="tool-section">
+                    <h3>🖼️ 图片列表</h3>
+                    <div class="image-list" id="imageList">
+                        <div style="text-align: center; color: #718096; padding: 20px;">
+                            暂无图片
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tool-section">
+                    <h3>📊 统计信息</h3>
+                    <div class="stats">
+                        <div class="stat-item">
+                            <span>总图片数:</span>
+                            <span id="totalImages">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>已标注:</span>
+                            <span id="annotatedImages">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>标注总数:</span>
+                            <span id="totalAnnotations">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中间画布区域 -->
+            <div class="canvas-container">
+                <div class="upload-area" id="mainUploadArea">
+                    <div class="upload-icon">🖼️</div>
+                    <div class="upload-text">上传图片开始标注</div>
+                    <div class="upload-hint">或从左侧图片列表选择</div>
+                </div>
+                <canvas id="imageCanvas"></canvas>
+                <div id="canvasInfo" style="margin-top: 10px; color: #718096; display: none;">
+                    <span>🖱️ 左键拖拽绘制边界框 | 右键删除标注</span>
+                </div>
+            </div>
+
+            <!-- 右侧标注工具 -->
+            <div class="sidebar">
+                <div class="tool-section">
+                    <h3>🏷️ 标注模式</h3>
+                    <button class="btn active" id="classificationBtn" onclick="setAnnotationMode('classification')">
+                        图像分类
+                    </button>
+                    <button class="btn" id="detectionBtn" onclick="setAnnotationMode('detection')">
+                        目标检测
+                    </button>
+                </div>
+
+                <div class="tool-section" id="classificationPanel">
+                    <h3>🔖 分类标注</h3>
+                    <div class="form-group">
+                        <label for="classLabel">类别标签:</label>
+                        <input type="text" id="classLabel" placeholder="输入类别名称">
+                    </div>
+                    <button class="btn" onclick="addClassificationAnnotation()" id="addClassBtn">
+                        添加分类标注
+                    </button>
+                </div>
+
+                <div class="tool-section" id="detectionPanel" style="display: none;">
+                    <h3>🎯 检测标注</h3>
+                    <div class="form-group">
+                        <label for="objectLabel">目标标签:</label>
+                        <input type="text" id="objectLabel" placeholder="输入目标名称">
+                    </div>
+                    <div style="color: #718096; font-size: 12px; margin-bottom: 10px;">
+                        在图像上拖拽绘制边界框
+                    </div>
+                </div>
+
+                <div class="tool-section">
+                    <h3>📝 标注列表</h3>
+                    <div class="annotation-list" id="annotationList">
+                        <div style="text-align: center; color: #718096; padding: 20px;">
+                            暂无标注
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tool-section">
+                    <h3>💾 数据管理</h3>
+                    <button class="btn" onclick="saveAnnotations()" id="saveBtn" disabled>
+                        保存标注
+                    </button>
+                    <button class="btn" onclick="exportData('json')">
+                        导出 JSON
+                    </button>
+                    <button class="btn" onclick="exportData('coco')">
+                        导出 COCO
+                    </button>
+                    <button class="btn" onclick="exportData('yolo')">
+                        导出 YOLO
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知消息 -->
+    <div id="notification" class="notification"></div>
+
+    <!-- 进度模态框 -->
+    <div id="progressModal" class="modal">
+        <div class="modal-content">
+            <h3 id="progressTitle">处理中...</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p id="progressText">请稍候...</p>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentImage = null;
+        let currentImageId = null;
+        let annotationMode = 'classification';
+        let annotations = [];
+        let isDrawing = false;
+        let startX, startY;
+        let canvas, ctx;
+        let imageScale = 1;
+        let imageOffsetX = 0, imageOffsetY = 0;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            canvas = document.getElementById('imageCanvas');
+            ctx = canvas.getContext('2d');
+            
+            setupEventListeners();
+            loadImageList();
+        });
+
+        function setupEventListeners() {
+            // 文件上传
+            const fileInput = document.getElementById('fileInput');
+            fileInput.addEventListener('change', handleFileUpload);
+
+            // 拖拽上传
+            const uploadArea = document.querySelector('.upload-area');
+            uploadArea.addEventListener('dragover', handleDragOver);
+            uploadArea.addEventListener('drop', handleDrop);
+
+            // 画布事件
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('contextmenu', handleRightClick);
+
+            // 键盘事件
+            document.addEventListener('keydown', handleKeyDown);
+        }
+
+        function handleFileUpload(event) {
+            const files = event.target.files;
+            for (let i = 0; i < files.length; i++) {
+                uploadFile(files[i]);
+            }
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('dragover');
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('dragover');
+            
+            const files = event.dataTransfer.files;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (file.type.indexOf('image/') === 0) {
+                    uploadFile(file);
+                }
+            }
+        }
+
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            showProgress('上传中...', '正在上传图片，请稍候...');
+
+            fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideProgress();
+                if (data.success) {
+                    showNotification('图片上传成功！', 'success');
+                    loadImageList();
+                    loadImage(data.image_data.id);
+                } else {
+                    showNotification('上传失败: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                hideProgress();
+                showNotification('上传失败: ' + error.message, 'error');
+            });
+        }
+
+        function loadImageList() {
+            fetch('/api/images')
+            .then(response => response.json())
+            .then(data => {
+                const imageList = document.getElementById('imageList');
+                
+                if (data.images.length === 0) {
+                    imageList.innerHTML = '<div style="text-align: center; color: #718096; padding: 20px;">暂无图片</div>';
+                    return;
+                }
+
+                imageList.innerHTML = '';
+                data.images.forEach(image => {
+                    const imageItem = document.createElement('div');
+                    imageItem.className = 'image-item';
+                    imageItem.innerHTML = 
+                        '<div style="font-weight: 600;">' + image.filename.split('_').slice(1).join('_') + '</div>' +
+                        '<div style="font-size: 12px; color: #718096;">' +
+                            image.image_info.width + ' × ' + image.image_info.height +
+                        '</div>';
+                    imageItem.onclick = () => loadImage(image.id);
+                    imageList.appendChild(imageItem);
+                });
+
+                updateStats();
+            });
+        }
+
+        function loadImage(imageId) {
+            currentImageId = imageId;
+            
+            // 更新图片列表选中状态
+            document.querySelectorAll('.image-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            if (event && event.target) {
+                const imageItem = event.target.closest('.image-item');
+                if (imageItem) {
+                    imageItem.classList.add('active');
+                }
+            }
+
+            // 加载图片
+            const img = new Image();
+            img.onload = function() {
+                currentImage = img;
+                displayImage();
+                loadAnnotations(imageId);
+                
+                // 显示画布和隐藏上传区域
+                document.getElementById('mainUploadArea').style.display = 'none';
+                canvas.style.display = 'block';
+                document.getElementById('canvasInfo').style.display = 'block';
+                document.getElementById('saveBtn').disabled = false;
+            };
+            img.src = '/api/images/' + imageId;
+        }
+
+        function displayImage() {
+            if (!currentImage) return;
+
+            const containerWidth = canvas.parentElement.clientWidth - 40;
+            const containerHeight = canvas.parentElement.clientHeight - 100;
+            
+            // 计算缩放比例
+            const scaleX = containerWidth / currentImage.width;
+            const scaleY = containerHeight / currentImage.height;
+            imageScale = Math.min(scaleX, scaleY, 1);
+
+            canvas.width = currentImage.width * imageScale;
+            canvas.height = currentImage.height * imageScale;
+
+            // 清空画布并绘制图像
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+
+            // 重绘标注
+            redrawAnnotations();
+        }
+
+        function loadAnnotations(imageId) {
+            fetch('/api/annotations/' + imageId)
+            .then(response => response.json())
+            .then(data => {
+                annotations = data.annotations || [];
+                updateAnnotationList();
+                redrawAnnotations();
+            });
+        }
+
+        function setAnnotationMode(mode) {
+            annotationMode = mode;
+            
+            // 更新按钮状态
+            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(mode + 'Btn').classList.add('active');
+            
+            // 显示/隐藏面板
+            document.getElementById('classificationPanel').style.display = mode === 'classification' ? 'block' : 'none';
+            document.getElementById('detectionPanel').style.display = mode === 'detection' ? 'block' : 'none';
+            
+            // 更新画布光标
+            canvas.style.cursor = mode === 'detection' ? 'crosshair' : 'default';
+        }
+
+        function addClassificationAnnotation() {
+            const label = document.getElementById('classLabel').value.trim();
+            if (!label) {
+                showNotification('请输入类别标签', 'error');
+                return;
+            }
+
+            // 检查是否已存在分类标注
+            let existingClassification = null;
+            for (let i = 0; i < annotations.length; i++) {
+                if (annotations[i].type === 'classification') {
+                    existingClassification = annotations[i];
+                    break;
+                }
+            }
+            if (existingClassification) {
+                existingClassification.label = label;
+                existingClassification.timestamp = new Date().toISOString();
+            } else {
+                annotations.push({
+                    id: Date.now().toString(),
+                    type: 'classification',
+                    label: label,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            document.getElementById('classLabel').value = '';
+            updateAnnotationList();
+            showNotification('分类标注已添加', 'success');
+        }
+
+        function handleMouseDown(event) {
+            if (annotationMode !== 'detection') return;
+
+            const rect = canvas.getBoundingClientRect();
+            startX = (event.clientX - rect.left) / imageScale;
+            startY = (event.clientY - rect.top) / imageScale;
+            isDrawing = true;
+        }
+
+        function handleMouseMove(event) {
+            if (!isDrawing || annotationMode !== 'detection') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const currentX = (event.clientX - rect.left) / imageScale;
+            const currentY = (event.clientY - rect.top) / imageScale;
+
+            // 重绘图像和已有标注
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+            redrawAnnotations();
+
+            // 绘制当前拖拽的矩形
+            ctx.strokeStyle = '#ff4757';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(
+                startX * imageScale, 
+                startY * imageScale, 
+                (currentX - startX) * imageScale, 
+                (currentY - startY) * imageScale
+            );
+            ctx.setLineDash([]);
+        }
+
+        function handleMouseUp(event) {
+            if (!isDrawing || annotationMode !== 'detection') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const endX = (event.clientX - rect.left) / imageScale;
+            const endY = (event.clientY - rect.top) / imageScale;
+
+            isDrawing = false;
+
+            // 计算边界框
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            const width = Math.abs(endX - startX);
+            const height = Math.abs(endY - startY);
+
+            // 检查边界框大小
+            if (width < 10 || height < 10) {
+                redrawAnnotations();
+                return;
+            }
+
+            const label = document.getElementById('objectLabel').value.trim() || '未命名';
+
+            // 添加检测标注
+            annotations.push({
+                id: Date.now().toString(),
+                type: 'detection',
+                label: label,
+                bbox: { x, y, width, height },
+                timestamp: new Date().toISOString()
+            });
+
+            updateAnnotationList();
+            redrawAnnotations();
+            showNotification('检测标注已添加', 'success');
+        }
+
+        function handleRightClick(event) {
+            event.preventDefault();
+            
+            if (annotationMode !== 'detection') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left) / imageScale;
+            const y = (event.clientY - rect.top) / imageScale;
+
+            // 查找点击位置的标注
+            for (let i = annotations.length - 1; i >= 0; i--) {
+                const ann = annotations[i];
+                if (ann.type === 'detection') {
+                    const bbox = ann.bbox;
+                    if (x >= bbox.x && x <= bbox.x + bbox.width &&
+                        y >= bbox.y && y <= bbox.y + bbox.height) {
+                        annotations.splice(i, 1);
+                        updateAnnotationList();
+                        redrawAnnotations();
+                        showNotification('标注已删除', 'success');
+                        break;
+                    }
+                }
+            }
+        }
+
+        function handleKeyDown(event) {
+            if (event.key === 'Delete' || event.key === 'Backspace') {
+                // 删除最后一个标注
+                if (annotations.length > 0) {
+                    annotations.pop();
+                    updateAnnotationList();
+                    redrawAnnotations();
+                    showNotification('标注已删除', 'success');
+                }
+            }
+        }
+
+        function redrawAnnotations() {
+            if (!currentImage) return;
+
+            annotations.forEach(ann => {
+                if (ann.type === 'detection') {
+                    const bbox = ann.bbox;
+                    ctx.strokeStyle = '#2ed573';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        bbox.x * imageScale, 
+                        bbox.y * imageScale, 
+                        bbox.width * imageScale, 
+                        bbox.height * imageScale
+                    );
+
+                    // 绘制标签
+                    ctx.fillStyle = '#2ed573';
+                    ctx.font = '14px Arial';
+                    const textWidth = ctx.measureText(ann.label).width;
+                    ctx.fillRect(
+                        bbox.x * imageScale, 
+                        bbox.y * imageScale - 20, 
+                        textWidth + 8, 
+                        20
+                    );
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(
+                        ann.label, 
+                        bbox.x * imageScale + 4, 
+                        bbox.y * imageScale - 6
+                    );
+                }
+            });
+        }
+
+        function updateAnnotationList() {
+            const listElement = document.getElementById('annotationList');
+            
+            if (annotations.length === 0) {
+                listElement.innerHTML = '<div style="text-align: center; color: #718096; padding: 20px;">暂无标注</div>';
+                return;
+            }
+
+            listElement.innerHTML = '';
+            annotations.forEach((ann, index) => {
+                const item = document.createElement('div');
+                item.className = 'annotation-item';
+                item.innerHTML = 
+                    '<div class="annotation-info">' +
+                        '<div class="annotation-type">' + (ann.type === 'classification' ? '分类' : '检测') + '</div>' +
+                        '<div class="annotation-label">' + ann.label + '</div>' +
+                    '</div>' +
+                    '<button class="delete-btn" onclick="deleteAnnotation(' + index + ')">删除</button>';
+                listElement.appendChild(item);
+            });
+        }
+
+        function deleteAnnotation(index) {
+            annotations.splice(index, 1);
+            updateAnnotationList();
+            redrawAnnotations();
+            showNotification('标注已删除', 'success');
+        }
+
+        function saveAnnotations() {
+            if (!currentImageId) {
+                showNotification('请先选择图片', 'error');
+                return;
+            }
+
+            const data = {
+                annotations: annotations,
+                image_info: {
+                    width: currentImage.width,
+                    height: currentImage.height
+                }
+            };
+
+            fetch('/api/annotations/' + currentImageId, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    showNotification('标注保存成功！', 'success');
+                    updateStats();
+                } else {
+                    showNotification('保存失败: ' + result.error, 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('保存失败: ' + error.message, 'error');
+            });
+        }
+
+        function exportData(format) {
+            showProgress('导出中...', '正在导出' + format.toUpperCase() + '格式数据...');
+            
+            fetch('/api/export/' + format)
+            .then(response => response.json())
+            .then(data => {
+                hideProgress();
+                
+                // 创建下载链接
+                const blob = new Blob([JSON.stringify(data, null, 2)], {
+                    type: 'application/json'
+                });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'annotations_' + format + '_' + new Date().toISOString().split('T')[0] + '.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showNotification(format.toUpperCase() + '格式数据导出成功！', 'success');
+            })
+            .catch(error => {
+                hideProgress();
+                showNotification('导出失败: ' + error.message, 'error');
+            });
+        }
+
+        function updateStats() {
+            // 这里可以添加统计信息更新逻辑
+            fetch('/api/images')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('totalImages').textContent = data.images.length;
+                // 可以添加更多统计逻辑
+            });
+        }
+
+        function showNotification(message, type) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = 'notification ' + type + ' show';
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        function showProgress(title, text) {
+            document.getElementById('progressTitle').textContent = title;
+            document.getElementById('progressText').textContent = text;
+            document.getElementById('progressModal').style.display = 'block';
+        }
+
+        function hideProgress() {
+            document.getElementById('progressModal').style.display = 'none';
+        }
+
+        // 窗口大小改变时重新调整画布
+        window.addEventListener('resize', function() {
+            if (currentImage) {
+                setTimeout(displayImage, 100);
+            }
+        });
+    </script>
+</body>
+</html>
