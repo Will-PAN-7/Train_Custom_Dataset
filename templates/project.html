@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project.name }} - 数据集标注工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        .image-card {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+        .image-card:hover {
+            transform: scale(1.05);
+        }
+        .image-card img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+        .image-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .image-card:hover .image-overlay {
+            opacity: 1;
+        }
+        .annotation-status {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+        .annotated {
+            background: #28a745;
+            color: white;
+        }
+        .not-annotated {
+            background: #dc3545;
+            color: white;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .upload-area:hover {
+            border-color: #667eea;
+        }
+        .upload-area.dragover {
+            border-color: #667eea;
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark gradient-bg">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-image"></i> 数据集标注工具
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">
+                    <i class="bi bi-house"></i> 返回首页
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- 项目信息 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <h2 class="mb-3">{{ project.name }}</h2>
+                                <div class="mb-2">
+                                    {% if project.task_type == 'classification' %}
+                                        <span class="badge bg-primary fs-6">
+                                            <i class="bi bi-grid-3x3-gap"></i> 图像分类
+                                        </span>
+                                    {% elif project.task_type == 'detection' %}
+                                        <span class="badge bg-success fs-6">
+                                            <i class="bi bi-bounding-box"></i> 目标检测
+                                        </span>
+                                    {% elif project.task_type == 'segmentation' %}
+                                        <span class="badge bg-warning fs-6">
+                                            <i class="bi bi-palette"></i> 语义分割
+                                        </span>
+                                    {% endif %}
+                                </div>
+                                <p class="text-muted mb-0">
+                                    创建时间：{{ project.created_at[:19].replace('T', ' ') }}
+                                </p>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <div class="mb-2">
+                                    <span class="badge bg-info fs-6">{{ project.images|length }} 张图像</span>
+                                    <span class="badge bg-secondary fs-6">{{ project.classes|length }} 个类别</span>
+                                </div>
+                                <div class="btn-group">
+                                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                                        <i class="bi bi-cloud-upload"></i> 上传图像
+                                    </button>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                            <i class="bi bi-download"></i> 导出
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            {% if project.task_type == 'detection' %}
+                                            <li><a class="dropdown-item" href="/export/{{ project_id }}/coco">COCO 格式</a></li>
+                                            <li><a class="dropdown-item" href="/export/{{ project_id }}/yolo">YOLO 格式</a></li>
+                                            {% elif project.task_type == 'classification' %}
+                                            <li><a class="dropdown-item" href="/export/{{ project_id }}/classification">分类格式</a></li>
+                                            {% endif %}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 类别信息 -->
+        {% if project.classes %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-tags"></i> 类别列表
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% for class_name in project.classes %}
+                        <span class="badge bg-light text-dark me-2 mb-1">{{ class_name }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 图像列表 -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-images"></i> 图像列表
+                        </h5>
+                        <div>
+                            <span class="badge bg-success">已标注: {{ project.annotations|length }}</span>
+                            <span class="badge bg-danger">未标注: {{ project.images|length - project.annotations|length }}</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        {% if project.images %}
+                        <div class="image-grid">
+                            {% for image_filename in project.images %}
+                            <div class="image-card">
+                                <img src="/uploads/{{ image_filename }}" alt="{{ image_filename }}">
+                                <div class="annotation-status {{ 'annotated' if image_filename in project.annotations else 'not-annotated' }}">
+                                    {% if image_filename in project.annotations %}
+                                        <i class="bi bi-check-circle"></i> 已标注
+                                    {% else %}
+                                        <i class="bi bi-exclamation-circle"></i> 未标注
+                                    {% endif %}
+                                </div>
+                                <div class="image-overlay">
+                                    <div class="text-center">
+                                        <div class="mb-2">{{ image_filename }}</div>
+                                        <a href="/annotate/{{ project_id }}/{{ image_filename }}" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-pencil"></i> 标注
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-image display-1 text-muted"></i>
+                            <h4 class="mt-3 text-muted">还没有上传图像</h4>
+                            <p class="text-muted">点击上方按钮上传您的第一张图像</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传图像模态框 -->
+    <div class="modal fade" id="uploadModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">上传图像</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="upload-area" id="uploadArea">
+                        <i class="bi bi-cloud-upload display-4 text-muted"></i>
+                        <h5 class="mt-3">拖拽图像到此处或点击选择</h5>
+                        <p class="text-muted">支持 JPG, PNG, GIF, BMP, TIFF, WebP 格式</p>
+                        <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+                        <button class="btn btn-outline-primary" onclick="document.getElementById('fileInput').click()">
+                            选择文件
+                        </button>
+                    </div>
+                    
+                    <div id="fileList" class="mt-3" style="display: none;">
+                        <h6>选择的文件:</h6>
+                        <ul id="selectedFiles" class="list-group"></ul>
+                    </div>
+                    
+                    <div id="uploadProgress" class="mt-3" style="display: none;">
+                        <div class="progress">
+                            <div id="progressBar" class="progress-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="uploadButton" onclick="uploadFiles()" disabled>
+                        <i class="bi bi-upload"></i> 上传
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let selectedFiles = [];
+        
+        // 文件选择处理
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            selectedFiles = Array.from(e.target.files);
+            updateFileList();
+        });
+        
+        // 拖拽上传
+        const uploadArea = document.getElementById('uploadArea');
+        
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            selectedFiles = Array.from(e.dataTransfer.files);
+            updateFileList();
+        });
+        
+        uploadArea.addEventListener('click', function() {
+            document.getElementById('fileInput').click();
+        });
+        
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+            const selectedFilesList = document.getElementById('selectedFiles');
+            const uploadButton = document.getElementById('uploadButton');
+            
+            if (selectedFiles.length > 0) {
+                fileList.style.display = 'block';
+                selectedFilesList.innerHTML = '';
+                
+                selectedFiles.forEach((file, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.innerHTML = `
+                        <span><i class="bi bi-image"></i> ${file.name}</span>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeFile(${index})">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    `;
+                    selectedFilesList.appendChild(li);
+                });
+                
+                uploadButton.disabled = false;
+            } else {
+                fileList.style.display = 'none';
+                uploadButton.disabled = true;
+            }
+        }
+        
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+        }
+        
+        function uploadFiles() {
+            if (selectedFiles.length === 0) return;
+            
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+            
+            const uploadProgress = document.getElementById('uploadProgress');
+            const progressBar = document.getElementById('progressBar');
+            const uploadButton = document.getElementById('uploadButton');
+            
+            uploadProgress.style.display = 'block';
+            uploadButton.disabled = true;
+            
+            fetch(`/upload_images/{{ project_id }}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`成功上传 ${data.uploaded_files.length} 个文件！`);
+                    location.reload();
+                } else {
+                    alert('上传失败：' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('上传失败');
+            })
+            .finally(() => {
+                uploadProgress.style.display = 'none';
+                uploadButton.disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>

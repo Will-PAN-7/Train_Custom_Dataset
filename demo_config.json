@@ -1,0 +1,26 @@
+{
+  "demo_projects": {
+    "图像分类示例": {
+      "task_type": "classification",
+      "classes": ["猫", "狗", "鸟", "鱼"],
+      "description": "动物分类示例项目"
+    },
+    "目标检测示例": {
+      "task_type": "detection", 
+      "classes": ["人", "车", "自行车", "摩托车", "飞机", "公交车"],
+      "description": "交通目标检测示例项目"
+    },
+    "语义分割示例": {
+      "task_type": "segmentation",
+      "classes": ["背景", "前景", "天空", "建筑", "道路"],
+      "description": "街景分割示例项目"
+    }
+  },
+  "settings": {
+    "max_file_size": "16MB",
+    "supported_formats": ["jpg", "jpeg", "png", "bmp", "gif", "tiff", "webp"],
+    "default_port": 5000,
+    "auto_save": true,
+    "backup_enabled": true
+  }
+}
